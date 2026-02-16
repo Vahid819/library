@@ -1,51 +1,79 @@
 import mongoose from "mongoose";
-import { regex } from "zod";
 
-const userSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema(
+  {
     name: {
-        type: String,
-        required: [true, "Name is required"],
-        trim: true
+      type: String,
+      trim: true,
     },
+
     username: {
-        type: String,
-        required: [true, "Username is required"],
-        unique: [true, "Username already exists"],
-        trim: true,
-        lowercase: [true, "Username must be in lowercase"],
-        regex: /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+      type: String,
+      unique: true,
+      trim: true,
+      lowercase: true,
+      match: [
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        "Username format is invalid",
+      ],
     },
+
     email: {
-        type: String,
-        required: [true, "Email is required"],
-        unique: [true, "Email already exists"],
-        trim: true,
-        lowercase: [true, "Email must be in lowercase"],
-        regex: /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      lowercase: true,
+      match: [
+        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+        "Email format is invalid",
+      ],
     },
-    otp: {
-        type: Number,
-        required: [true, "OTP is required"],
-    },
-    otpAtempt: {
-        type: Number,
-        required: [true, "OTP attempt count is required"],
-    },
-    otpExpires: {
-        type: Date,
-        required: [true, "OTP expiration time is required"],
-    },
+
     password: {
-        type: String,
-        required: [true, "Password is required"],
-        trim: true,
-        minLength: 6
+      type: String,
+      minlength: 6,
+      select: false,
     },
-},
-{
-    timestamps: true
-})
 
-const User = mongoose.model("User", userSchema) || mongoose.models.User
+    // 🔐 OTP (temporary)
+    otp: String,
+    otpAttempt: { type: Number, default: 0 },
+    otpExpires: Date,
 
-export default User
+    // ✅ Verification & status
+    isVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+
+    // 🧑 Role & access
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
+
+    // 🖼 Profile
+    avatar: String,
+    bio: { type: String, maxlength: 200 },
+
+    // 🔑 Auth provider
+    provider: {
+      type: String,
+      enum: ["credentials", "google", "github"],
+      default: "credentials",
+    },
+
+    // 🔒 Password reset
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
+
+    // 📊 Tracking
+    lastLoginAt: Date,
+  },
+  { timestamps: true }
+);
+
+// ✅ Prevent OverwriteModelError
+const User = mongoose.models.User || mongoose.model("User", userSchema);
+
+export default User;
