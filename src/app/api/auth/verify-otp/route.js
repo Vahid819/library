@@ -35,7 +35,7 @@ export async function POST(req) {
     if (!isOtpValid) {
       return NextResponse.json({ message: "Invalid OTP" }, { status: 400 });
     } else {
-        user.verifieduser = true;
+        user.isVerified = true;
         await user.save();
       return NextResponse.json({
         success: true,

@@ -11,77 +11,79 @@ function generateUsername(name, email) {
 }
 
 export async function POST(request) {
-  console.log("🚀 SIGNUP API HIT");
+  // console.log("🚀 SIGNUP API HIT");
 
   try {
     await connectDB();
-    console.log("✅ DB connected");
+    // console.log("✅ DB connected");
 
-    const body = await request.json();
-    console.log("📦 Request body:", body);
-
-    const { name, email, password } = body;
+    const { name, email, password, username } = await request.json();
+    // console.log("📦 Request body:", { name, email });
 
     if (!name || !email || !password) {
-      return new Response(
-        JSON.stringify({ error: "Name, email and password are required" }),
+      return Response.json(
+        { message: "Name, email and password are required" },
         { status: 400 }
       );
     }
 
-    const existingUser = await User.findOne({ email });
-    console.log("👤 Existing user:", existingUser);
+    const user = await User.findOne({ email });
+    // console.log("👤 Existing user:", user);
 
-    // ✅ CASE 1: OTP USER EXISTS → COMPLETE REGISTRATION
-    if (existingUser && !existingUser.isVerified) {
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      existingUser.name = name;
-      existingUser.username =
-        existingUser.username || generateUsername(name, email);
-      existingUser.password = hashedPassword;
-      existingUser.isVerified = true;
-
-      // 🧹 CLEAN OTP FIELDS
-      existingUser.otp = undefined;
-      existingUser.otpAttempt = undefined;
-      existingUser.otpExpires = undefined;
-
-      await existingUser.save();
-
-      console.log("🎉 User activated:", existingUser._id);
-
-      return new Response(
-        JSON.stringify({
-          message: "User registered successfully",
-          username: existingUser.username,
-        }),
-        { status: 201 }
-      );
-    }
-
-    // ❌ CASE 2: USER ALREADY VERIFIED
-    if (existingUser && existingUser.isVerified) {
-      return new Response(
-        JSON.stringify({ error: "User already exists" }),
+    // ❌ No OTP flow happened
+    if (!user) {
+      return Response.json(
+        { message: "Please verify your email first" },
         { status: 400 }
       );
     }
 
-    // ❌ CASE 3: SHOULD NEVER HAPPEN
-    return new Response(
-      JSON.stringify({ error: "Invalid signup state" }),
-      { status: 400 }
+    // ❌ OTP not verified
+    if (!user.isVerified) {
+      return Response.json(
+        { message: "Please verify OTP before signup" },
+        { status: 400 }
+      );
+    }
+
+    // ❌ User already fully registered
+    if (user.password) {
+      return Response.json(
+        { message: "User already registered. Please login." },
+        { status: 400 }
+      );
+    }
+
+    // ✅ COMPLETE REGISTRATION
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    user.name = name;
+    user.username = username || generateUsername(name, email);
+    user.password = hashedPassword;
+    user.provider = "credentials";
+
+    // 🧹 Clean OTP fields
+    user.otp = undefined;
+    user.otpAttempt = undefined;
+    user.otpExpires = undefined;
+
+    await user.save();
+
+    // console.log("🎉 User registration completed:", user._id);
+
+    return Response.json(
+      {
+        message: "User registered successfully",
+        username: user.username,
+      },
+      { status: 201 }
     );
 
   } catch (error) {
     console.error("🔥 SIGNUP ERROR:", error);
 
-    return new Response(
-      JSON.stringify({
-        error: "Internal Server Error",
-        details: error.message,
-      }),
+    return Response.json(
+      { message: "Internal Server Error" },
       { status: 500 }
     );
   }

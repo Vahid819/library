@@ -41,6 +41,10 @@ export default function Page() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState(null);
+  // null | "available" | "taken" | "invalid"
+
 
   const form = useForm({
     resolver: zodResolver(signupSchema),
@@ -56,18 +60,16 @@ export default function Page() {
   const emailValue = form.watch("email");
   const passwordValue = form.watch("password");
 
-  // 🔄 Clear error on input change
+  // 🔄 Clear error on change
   useEffect(() => {
     if (error) setError("");
   }, [emailValue, otp, passwordValue]);
 
-  // ⏱ Resend OTP Timer
+  // ⏱ OTP resend timer
   useEffect(() => {
     if (resendTimer === 0) return;
-    const timer = setInterval(() => {
-      setResendTimer((p) => p - 1);
-    }, 1000);
-    return () => clearInterval(timer);
+    const t = setInterval(() => setResendTimer((p) => p - 1), 1000);
+    return () => clearInterval(t);
   }, [resendTimer]);
 
   // ================= SEND OTP =================
@@ -105,7 +107,7 @@ export default function Page() {
       setLoading(true);
       setError("");
 
-      // 1️⃣ Verify OTP
+      // Verify OTP
       const verifyRes = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -115,13 +117,13 @@ export default function Page() {
       const verifyData = await verifyRes.json();
       if (!verifyRes.ok) throw new Error(verifyData.message);
 
-      // 2️⃣ Signup
+      // Signup
       const signupRes = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: values.name,
-          username: values.username,
+          username: values.username || undefined, // 🔑 optional
           email: values.email,
           password: values.password,
         }),
@@ -132,16 +134,51 @@ export default function Page() {
         throw new Error(signupData.error || signupData.message);
 
       setSuccess(true);
-
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 1200);
+      setTimeout(() => router.push("/dashboard"), 1200);
     } catch (err) {
       setError(err.message || "Signup failed");
     } finally {
       setLoading(false);
     }
   }
+
+  // Check username avaiblility
+
+  const usernameValue = form.watch("username");
+
+  useEffect(() => {
+    if (!usernameValue || otpSent) {
+      setUsernameStatus(null);
+      return;
+    }
+
+    const timeout = setTimeout(async () => {
+      try {
+        setCheckingUsername(true);
+
+        const res = await fetch("/api/auth/check-username", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: usernameValue }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setUsernameStatus("invalid");
+          return;
+        }
+
+        setUsernameStatus(data.available ? "available" : "taken");
+      } catch {
+        setUsernameStatus("invalid");
+      } finally {
+        setCheckingUsername(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [usernameValue, otpSent]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
@@ -170,16 +207,52 @@ export default function Page() {
             onSubmit={form.handleSubmit(createAccount)}
             className="space-y-4"
           >
+            {/* Name */}
             <div>
               <Label>Full Name</Label>
               <Input {...form.register("name")} />
             </div>
 
+            {/* Username */}
             <div>
-              <Label>Username</Label>
-              <Input {...form.register("username")} />
+              <Label>Username (optional)</Label>
+
+              <div className="relative">
+                <Input
+                  {...form.register("username")}
+                  disabled={otpSent}
+                  className={
+                    usernameStatus === "available"
+                      ? "border-green-500"
+                      : usernameStatus === "taken"
+                        ? "border-red-500"
+                        : ""
+                  }
+                />
+
+                <div className="absolute right-3 top-2.5 text-sm">
+                  {checkingUsername && "⏳"}
+                  {usernameStatus === "available" && "✅"}
+                  {usernameStatus === "taken" && "❌"}
+                </div>
+              </div>
+
+              <p className="text-xs mt-1">
+                {usernameStatus === "available" && (
+                  <span className="text-green-600">Username is available</span>
+                )}
+                {usernameStatus === "taken" && (
+                  <span className="text-red-600">Username already taken</span>
+                )}
+                {!usernameStatus && (
+                  <span className="text-muted-foreground">
+                    Lowercase letters, numbers, hyphens only
+                  </span>
+                )}
+              </p>
             </div>
 
+            {/* Email */}
             <div>
               <Label>Email</Label>
               <div className="flex gap-2">
@@ -201,6 +274,7 @@ export default function Page() {
               </div>
             </div>
 
+            {/* OTP */}
             {otpSent && (
               <div>
                 <Label>
@@ -236,6 +310,7 @@ export default function Page() {
               </div>
             )}
 
+            {/* Password */}
             <div>
               <Label>Password</Label>
               <div className="relative">
@@ -251,8 +326,12 @@ export default function Page() {
                   {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Minimum 6 characters
+              </p>
             </div>
 
+            {/* Confirm */}
             <div>
               <Label>Confirm Password</Label>
               <Input type="password" {...form.register("confirmPassword")} />
