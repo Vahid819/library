@@ -134,7 +134,7 @@ export default function Page() {
         throw new Error(signupData.error || signupData.message);
 
       setSuccess(true);
-      setTimeout(() => router.push("/dashboard"), 1200);
+      setTimeout(() => router.push(`/dashboard/${username}`), 1200);
     } catch (err) {
       setError(err.message || "Signup failed");
     } finally {
